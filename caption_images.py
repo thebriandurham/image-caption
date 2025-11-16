@@ -15,8 +15,15 @@ from datetime import datetime
 import ollama
 
 
+def is_macos_screenshot_filename(filename):
+    """Check if filename matches macOS screenshot format: 'Screenshot YYYY-MM-DD at HH.MM.SS'."""
+    # Pattern: Screenshot (case-insensitive) + space + date (YYYY-MM-DD) + space + "at" + space + time (HH.MM.SS)
+    pattern = r'(?i)^Screenshot \d{4}-\d{2}-\d{2} at \d{2}\.\d{2}\.\d{2}'
+    return bool(re.match(pattern, filename))
+
+
 def get_image_files(images_dir):
-    """Get all image files with 'screenshot' in the name from the images directory."""
+    """Get all image files matching macOS screenshot filename format from the images directory."""
     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif'}
     image_files = []
     
@@ -28,10 +35,10 @@ def get_image_files(images_dir):
         sys.exit(1)
     
     for file_path in images_path.iterdir():
-        # Only process files with 'screenshot' in the name (case-insensitive)
+        # Only process files matching macOS screenshot filename format
         if (file_path.is_file() and 
             file_path.suffix.lower() in image_extensions and
-            'screenshot' in file_path.stem.lower()):
+            is_macos_screenshot_filename(file_path.stem)):
             image_files.append(file_path)
     
     return sorted(image_files)
@@ -199,7 +206,7 @@ def process_images(images_dir="images", model_name="qwen3-vl:4b-instruct", mode=
     image_files = get_image_files(images_dir)
     
     if not image_files:
-        print(f"No image files with 'screenshot' in the name found in '{images_dir}'.")
+        print(f"No image files matching macOS screenshot filename format found in '{images_dir}'.")
         return
     
     mode_display = "captioning" if mode == "caption" else "renaming"
@@ -344,7 +351,7 @@ def process_images(images_dir="images", model_name="qwen3-vl:4b-instruct", mode=
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Process images with Ollama vision model to generate captions or rename files. Only processes files with 'screenshot' in the name."
+        description="Process images with Ollama vision model to generate captions or rename files. Only processes files matching macOS screenshot filename format (e.g., 'Screenshot 2025-11-16 at 18.23.47')."
     )
     parser.add_argument(
         "images_dir",
