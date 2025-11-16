@@ -157,6 +157,27 @@ def sanitize_filename(filename):
     return filename
 
 
+def prompt_user_after_failures(image_name):
+    """Prompt user for action after 3 failed attempts."""
+    print(f"\n  ⚠ File '{image_name}' failed after 3 attempts.")
+    print("  What would you like to do?")
+    print("  1. Stop and exit")
+    print("  2. Return to 3 tries loop (retry)")
+    print("  3. Step-over this file (skip to next)")
+    
+    while True:
+        try:
+            choice = input("  Enter your choice (1/2/3): ").strip()
+            if choice in ['1', '2', '3']:
+                return choice
+            else:
+                print("  Invalid choice. Please enter 1, 2, or 3.")
+        except (EOFError, KeyboardInterrupt):
+            # Handle Ctrl+C or EOF gracefully
+            print("\n  Interrupted. Exiting...")
+            return '1'  # Default to exit on interruption
+
+
 def process_images(images_dir="images", model_name="qwen3-vl:4b-instruct", mode="caption", ollama_host=None):
     """Process all images in the directory based on the specified mode."""
     # Support both relative and absolute paths
@@ -186,29 +207,62 @@ def process_images(images_dir="images", model_name="qwen3-vl:4b-instruct", mode=
     print(f"Mode: {mode} ({mode_display})")
     print(f"Using model: {model_name}\n")
     
-    for i, image_path in enumerate(image_files, 1):
+    i = 0
+    while i < len(image_files):
+        image_path = image_files[i]
+        i += 1
         print(f"[{i}/{len(image_files)}] Processing: {image_path.name}")
         
         max_retries = 3
         result = None
         last_error = None
+        error_logged = False
         
-        for attempt in range(1, max_retries + 1):
-            try:
-                if mode == "caption":
-                    # Generate caption
-                    result = caption_image(image_path, model_name, ollama_client)
-                elif mode == "name":
-                    # Generate filename
-                    result = generate_filename(image_path, model_name, ollama_client)
-                break  # Success, exit retry loop
-            except Exception as e:
-                last_error = e
-                if attempt < max_retries:
-                    print(f"  ⚠ Attempt {attempt} failed, waiting 5s before retry... ({str(e)})")
-                    time.sleep(5)
-                else:
-                    print(f"  ✗ Failed after {max_retries} attempts: {str(e)}")
+        while True:  # Loop until success or user chooses to skip/exit
+            for attempt in range(1, max_retries + 1):
+                try:
+                    if mode == "caption":
+                        # Generate caption
+                        result = caption_image(image_path, model_name, ollama_client)
+                    elif mode == "name":
+                        # Generate filename
+                        result = generate_filename(image_path, model_name, ollama_client)
+                    break  # Success, exit retry loop
+                except Exception as e:
+                    last_error = e
+                    if attempt < max_retries:
+                        print(f"  ⚠ Attempt {attempt} failed, waiting 5s before retry... ({str(e)})")
+                        time.sleep(5)
+                    else:
+                        print(f"  ✗ Failed after {max_retries} attempts: {str(e)}")
+            
+            # If we got a result, break out of the retry loop
+            if result is not None:
+                break
+            
+            # After 3 failed attempts, prompt user
+            user_choice = prompt_user_after_failures(image_path.name)
+            
+            if user_choice == '1':
+                # Stop and exit
+                print("\nStopping processing as requested.")
+                # Log the error before exiting
+                if not error_logged:
+                    error_msg = str(last_error)
+                    log_error(error_log_path, image_path.name, error_msg)
+                return
+            elif user_choice == '2':
+                # Return to 3 tries loop - continue the while True loop
+                print("  Retrying with 3 attempts...")
+                continue
+            elif user_choice == '3':
+                # Step-over the file - break out of retry loop, continue to next file
+                print(f"  ⊘ Skipping file: {image_path.name}")
+                error_msg = f"Skipped by user after 3 failed attempts. Last error: {str(last_error)}"
+                log_error(error_log_path, image_path.name, error_msg)
+                error_logged = True
+                result = None  # Ensure result is None so we skip processing
+                break
         
         if result is not None:
             if mode == "caption":
@@ -278,9 +332,10 @@ def process_images(images_dir="images", model_name="qwen3-vl:4b-instruct", mode=
                     print(f"  ✗ {error_msg}")
                     log_error(error_log_path, image_path.name, error_msg)
         else:
-            # Log error after all retries failed
-            error_msg = str(last_error)
-            log_error(error_log_path, image_path.name, error_msg)
+            # Log error after all retries failed (only if not already logged)
+            if not error_logged and last_error is not None:
+                error_msg = str(last_error)
+                log_error(error_log_path, image_path.name, error_msg)
     
     print(f"\nProcessing complete!")
     if error_log_path.exists() and error_log_path.stat().st_size > 0:
