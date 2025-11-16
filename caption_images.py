@@ -383,15 +383,9 @@ if __name__ == "__main__":
         "--all-images",
         dest="all_images",
         action="store_true",
-        help="Process all images in the directory, not just macOS screenshots. Only works with -mode name."
+        help="Process all images in the directory, not just macOS screenshots."
     )
     
     args = parser.parse_args()
-    
-    # Validate that --all-images only works with mode="name"
-    if args.all_images and args.mode != "name":
-        print("Error: --all-images flag can only be used with -mode name.")
-        sys.exit(1)
-    
     process_images(args.images_dir, mode=args.mode, ollama_host=args.ollama_host, all_images=args.all_images)
 
