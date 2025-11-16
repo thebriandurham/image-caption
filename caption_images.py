@@ -22,8 +22,13 @@ def is_macos_screenshot_filename(filename):
     return bool(re.match(pattern, filename))
 
 
-def get_image_files(images_dir):
-    """Get all image files matching macOS screenshot filename format from the images directory."""
+def get_image_files(images_dir, all_images=False):
+    """Get image files from the images directory.
+    
+    Args:
+        images_dir: Directory containing images
+        all_images: If True, returns all image files. If False, only returns files matching macOS screenshot filename format.
+    """
     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif'}
     image_files = []
     
@@ -35,11 +40,10 @@ def get_image_files(images_dir):
         sys.exit(1)
     
     for file_path in images_path.iterdir():
-        # Only process files matching macOS screenshot filename format
-        if (file_path.is_file() and 
-            file_path.suffix.lower() in image_extensions and
-            is_macos_screenshot_filename(file_path.stem)):
-            image_files.append(file_path)
+        if file_path.is_file() and file_path.suffix.lower() in image_extensions:
+            # If all_images is True, include all images; otherwise only macOS screenshots
+            if all_images or is_macos_screenshot_filename(file_path.stem):
+                image_files.append(file_path)
     
     return sorted(image_files)
 
@@ -185,7 +189,7 @@ def prompt_user_after_failures(image_name):
             return '1'  # Default to exit on interruption
 
 
-def process_images(images_dir="images", model_name="qwen3-vl:4b-instruct", mode="caption", ollama_host=None):
+def process_images(images_dir="images", model_name="qwen3-vl:4b-instruct", mode="caption", ollama_host=None, all_images=False):
     """Process all images in the directory based on the specified mode."""
     # Support both relative and absolute paths
     images_dir_path = Path(images_dir).expanduser().resolve()
@@ -203,10 +207,13 @@ def process_images(images_dir="images", model_name="qwen3-vl:4b-instruct", mode=
     if error_log_path.exists():
         error_log_path.unlink()
     
-    image_files = get_image_files(images_dir)
+    image_files = get_image_files(images_dir, all_images=all_images)
     
     if not image_files:
-        print(f"No image files matching macOS screenshot filename format found in '{images_dir}'.")
+        if all_images:
+            print(f"No image files found in '{images_dir}'.")
+        else:
+            print(f"No image files matching macOS screenshot filename format found in '{images_dir}'.")
         return
     
     mode_display = "captioning" if mode == "caption" else "renaming"
@@ -372,7 +379,19 @@ if __name__ == "__main__":
         default=None,
         help="Ollama server host URL (e.g., 'http://192.168.1.100:11434'). If not specified, uses localhost (default: 'http://localhost:11434')"
     )
+    parser.add_argument(
+        "--all-images",
+        dest="all_images",
+        action="store_true",
+        help="Process all images in the directory, not just macOS screenshots. Only works with -mode name."
+    )
     
     args = parser.parse_args()
-    process_images(args.images_dir, mode=args.mode, ollama_host=args.ollama_host)
+    
+    # Validate that --all-images only works with mode="name"
+    if args.all_images and args.mode != "name":
+        print("Error: --all-images flag can only be used with -mode name.")
+        sys.exit(1)
+    
+    process_images(args.images_dir, mode=args.mode, ollama_host=args.ollama_host, all_images=args.all_images)
 
